@@ -22,7 +22,9 @@ import com.codahale.metrics.SharedMetricRegistries;
 import com.google.common.base.Optional;
 import com.notnoop.apns.APNS;
 import com.notnoop.apns.ApnsService;
+import com.notnoop.apns.ApnsServiceBuilder;
 import com.notnoop.exceptions.NetworkIOException;
+import org.apache.commons.lang3.StringUtils;
 import org.bouncycastle.openssl.PEMReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -68,18 +70,20 @@ public class APNSender implements Managed {
   private final String            pushCertificate;
   private final String            pushKey;
   private final boolean           feedbackEnabled;
+  private final boolean           sandboxEnabled;
 
   private ApnsService pushApnService;
 
   public APNSender(JedisPool jedisPool, UnregisteredQueue unregisteredQueue,
                    String pushCertificate, String pushKey,
-                   boolean feedbackEnabled)
+                   boolean feedbackEnabled, boolean sandboxEnabled)
   {
     this.jedisPool         = jedisPool;
     this.unregisteredQueue = unregisteredQueue;
     this.pushCertificate   = pushCertificate;
     this.pushKey           = pushKey;
     this.feedbackEnabled   = feedbackEnabled;
+    this.sandboxEnabled    = sandboxEnabled;
   }
 
   public void sendMessage(ApnMessage message)
@@ -122,10 +126,15 @@ public class APNSender implements Managed {
   public void start() throws Exception {
     byte[] pushKeyStore = initializeKeyStore(pushCertificate, pushKey);
 
-    this.pushApnService = APNS.newService()
-                              .withCert(new ByteArrayInputStream(pushKeyStore), "insecure")
-                              .asQueued()
-                              .withProductionDestination().build();
+      ApnsServiceBuilder apnsServiceBuilder = APNS.newService()
+              .withCert(new ByteArrayInputStream(pushKeyStore), "insecure")
+              .asQueued();
+      if (sandboxEnabled) {
+          apnsServiceBuilder.withSandboxDestination();
+      } else {
+          apnsServiceBuilder.withProductionDestination();
+      }
+      this.pushApnService = apnsServiceBuilder.build();
 
     if (feedbackEnabled) {
       this.executor.scheduleAtFixedRate(new FeedbackRunnable(), 0, 1, TimeUnit.HOURS);
@@ -162,14 +171,11 @@ public class APNSender implements Managed {
 
         if (device.isPresent()) {
           logger.warn("Got APN unregistered notice!");
-          String[] parts    = device.get().split(".", 2);
+          String deviceId    = StringUtils.substringAfterLast(device.get(), "\\.");
 
-          if (parts.length == 2) {
-            String number    = parts[0];
-            int    deviceId  = Integer.parseInt(parts[1]);
+          if (StringUtils.isNumeric(deviceId)) {
             long   timestamp = inactiveDevices.get(registrationId).getTime();
-
-            unregisteredQueue.put(new UnregisteredEvent(registrationId, null, number, deviceId, timestamp));
+            unregisteredQueue.put(new UnregisteredEvent(registrationId, null, StringUtils.substringBeforeLast(device.get(), "\\."), Integer.parseInt(deviceId), timestamp));
           } else {
             logger.warn("APN unregister event for device with no parts: " + device.get());
           }

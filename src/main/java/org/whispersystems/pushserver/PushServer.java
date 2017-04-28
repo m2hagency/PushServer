@@ -65,7 +65,8 @@ public class PushServer extends Application<PushServerConfiguration> {
     return new APNSender(redisClient, apnQueue,
                          configuration.getPushCertificate(),
                          configuration.getPushKey(),
-                         configuration.isFeedbackEnabled());
+                         configuration.isFeedbackEnabled(),
+                         configuration.isSandboxEnabled());
   }
 
   public static void main(String[] args) throws Exception {
