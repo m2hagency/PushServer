@@ -16,20 +16,10 @@ import io.dropwizard.auth.Auth;
 @Path("/api/v1/feedback")
 public class FeedbackController {
 
-  private final UnregisteredQueue gcmQueue;
   private final UnregisteredQueue apnQueue;
 
-  public FeedbackController(UnregisteredQueue gcmQueue, UnregisteredQueue apnQueue) {
-    this.gcmQueue = gcmQueue;
+  public FeedbackController(UnregisteredQueue apnQueue) {
     this.apnQueue = apnQueue;
-  }
-
-  @Timed
-  @GET
-  @Produces(MediaType.APPLICATION_JSON)
-  @Path("/gcm/")
-  public UnregisteredEventList getUnregisteredGcmDevices(@Auth Server server) {
-    return new UnregisteredEventList(gcmQueue.get(server.getName()));
   }
 
   @Timed

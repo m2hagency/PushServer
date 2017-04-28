@@ -32,6 +32,7 @@ import org.whispersystems.pushserver.util.Constants;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.security.KeyPair;
@@ -56,7 +57,6 @@ public class APNSender implements Managed {
 
   private final MetricRegistry metricRegistry = SharedMetricRegistries.getOrCreate(Constants.METRICS_NAME);
 
-  private final Meter  voipMeter    = metricRegistry.meter(name(getClass(), "voip"));
   private final Meter  pushMeter    = metricRegistry.meter(name(getClass(), "push"));
   private final Meter  failureMeter = metricRegistry.meter(name(getClass(), "failure"));
   private final Logger logger       = LoggerFactory.getLogger(APNSender.class);
@@ -67,24 +67,18 @@ public class APNSender implements Managed {
   private final UnregisteredQueue unregisteredQueue;
   private final String            pushCertificate;
   private final String            pushKey;
-  private final String            voipCertificate;
-  private final String            voipKey;
   private final boolean           feedbackEnabled;
 
   private ApnsService pushApnService;
-  private ApnsService voipApnService;
 
   public APNSender(JedisPool jedisPool, UnregisteredQueue unregisteredQueue,
                    String pushCertificate, String pushKey,
-                   String voipCertificate, String voipKey,
                    boolean feedbackEnabled)
   {
     this.jedisPool         = jedisPool;
     this.unregisteredQueue = unregisteredQueue;
     this.pushCertificate   = pushCertificate;
     this.pushKey           = pushKey;
-    this.voipCertificate   = voipCertificate;
-    this.voipKey           = voipKey;
     this.feedbackEnabled   = feedbackEnabled;
   }
 
@@ -93,14 +87,8 @@ public class APNSender implements Managed {
   {
     try {
       redisSet(message.getApnId(), message.getNumber(), message.getDeviceId());
-
-      if (message.isVoip()) {
-        voipApnService.push(message.getApnId(), message.getMessage(), new Date(message.getExpirationTime()));
-        voipMeter.mark();
-      } else {
-        pushApnService.push(message.getApnId(), message.getMessage(), new Date(message.getExpirationTime()));
-        pushMeter.mark();
-      }
+      pushApnService.push(message.getApnId(), message.getMessage(), new Date(message.getExpirationTime()));
+      pushMeter.mark();
     } catch (NetworkIOException nioe) {
       logger.warn("Network Error", nioe);
       failureMeter.mark();
@@ -111,15 +99,15 @@ public class APNSender implements Managed {
   private static byte[] initializeKeyStore(String pemCertificate, String pemKey)
       throws KeyStoreException, CertificateException, NoSuchAlgorithmException, IOException
   {
-    PEMReader       reader           = new PEMReader(new InputStreamReader(new ByteArrayInputStream(pemCertificate.getBytes())));
+    PEMReader       reader           = new PEMReader(new InputStreamReader(new FileInputStream(pemCertificate)));
     X509Certificate certificate      = (X509Certificate) reader.readObject();
     Certificate[]   certificateChain = {certificate};
-
-    reader = new PEMReader(new InputStreamReader(new ByteArrayInputStream(pemKey.getBytes())));
+    reader = new PEMReader(new InputStreamReader(new FileInputStream(pemKey)));
     KeyPair keyPair = (KeyPair) reader.readObject();
 
     KeyStore keyStore = KeyStore.getInstance("pkcs12");
     keyStore.load(null);
+
     keyStore.setEntry("apn",
                       new KeyStore.PrivateKeyEntry(keyPair.getPrivate(), certificateChain),
                       new KeyStore.PasswordProtection("insecure".toCharArray()));
@@ -133,15 +121,9 @@ public class APNSender implements Managed {
   @Override
   public void start() throws Exception {
     byte[] pushKeyStore = initializeKeyStore(pushCertificate, pushKey);
-    byte[] voipKeyStore = initializeKeyStore(voipCertificate, voipKey);
 
     this.pushApnService = APNS.newService()
                               .withCert(new ByteArrayInputStream(pushKeyStore), "insecure")
-                              .asQueued()
-                              .withProductionDestination().build();
-
-    this.voipApnService = APNS.newService()
-                              .withCert(new ByteArrayInputStream(voipKeyStore), "insecure")
                               .asQueued()
                               .withProductionDestination().build();
 
@@ -153,7 +135,6 @@ public class APNSender implements Managed {
   @Override
   public void stop() throws Exception {
     pushApnService.stop();
-    voipApnService.stop();
   }
 
   private void redisSet(String registrationId, String number, int deviceId) {
@@ -175,7 +156,6 @@ public class APNSender implements Managed {
     @Override
     public void run() {
       Map<String, Date> inactiveDevices = pushApnService.getInactiveDevices();
-      inactiveDevices.putAll(voipApnService.getInactiveDevices());
 
       for (String registrationId : inactiveDevices.keySet()) {
         Optional<String> device = redisGet(registrationId);
