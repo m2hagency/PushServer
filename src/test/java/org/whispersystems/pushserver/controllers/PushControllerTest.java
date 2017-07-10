@@ -39,7 +39,7 @@ public class PushControllerTest {
     Response response = resources.getJerseyTest().target("/api/v1/push/apn/")
                                  .request()
                                  .header("Authorization", AuthHelper.getAuthHeader("textsecure", "foobar"))
-                                 .put(Entity.entity(new ApnMessage("12345", "+14152222222", 1, "Hey there!", 1111), MediaType.APPLICATION_JSON));
+                                 .put(Entity.entity(new ApnMessage("12345", "+14152222222", 1, "Hey there!", 1111, false), MediaType.APPLICATION_JSON));
 
     assertThat(response.getStatus()).isEqualTo(204);
 
@@ -58,7 +58,7 @@ public class PushControllerTest {
     Response response = resources.getJerseyTest().target("/api/v1/push/apn/")
                                  .request()
                                  .header("Authorization", AuthHelper.getAuthHeader("redphone", "foobar"))
-                                 .put(Entity.entity(new ApnMessage("12345", "+14152222222", 1, "Hey there!", 2222), MediaType.APPLICATION_JSON), Response.class);
+                                 .put(Entity.entity(new ApnMessage("12345", "+14152222222", 1, "Hey there!", 2222, false), MediaType.APPLICATION_JSON), Response.class);
 
     assertThat(response.getStatus()).isEqualTo(401);
     verifyNoMoreInteractions(apnSender);

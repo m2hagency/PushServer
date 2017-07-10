@@ -65,6 +65,8 @@ public class PushServer extends Application<PushServerConfiguration> {
     return new APNSender(redisClient, apnQueue,
                          configuration.getPushCertificate(),
                          configuration.getPushKey(),
+                         configuration.getVoipCertificate(),
+                         configuration.getVoipKey(),
                          configuration.isFeedbackEnabled(),
                          configuration.isSandboxEnabled());
   }
