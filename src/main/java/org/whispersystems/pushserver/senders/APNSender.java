@@ -191,11 +191,11 @@ public class APNSender implements Managed {
 
         if (device.isPresent()) {
           logger.warn("Got APN unregistered notice!");
-          String deviceId    = StringUtils.substringAfterLast(device.get(), "\\.");
+          String deviceId    = StringUtils.substringAfterLast(device.get(), ".");
 
           if (StringUtils.isNumeric(deviceId)) {
             long   timestamp = inactiveDevices.get(registrationId).getTime();
-            unregisteredQueue.put(new UnregisteredEvent(registrationId, null, StringUtils.substringBeforeLast(device.get(), "\\."), Integer.parseInt(deviceId), timestamp));
+            unregisteredQueue.put(new UnregisteredEvent(registrationId, null, StringUtils.substringBeforeLast(device.get(), "."), Integer.parseInt(deviceId), timestamp));
           } else {
             logger.warn("APN unregister event for device with no parts: " + device.get());
           }
